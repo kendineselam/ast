@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Astr
 // @namespace    astra-sade-tema
-// @version      3.8
+// @version      3.9
 // @description  Anadolu Sigorta Astra arayüzünü sadeleştirir, modern ve profesyonel bir görünüm verir
 // @match        https://astra.anadolusigorta.com.tr/*
 // @run-at       document-start
@@ -134,6 +134,8 @@
             '<div style="font-weight:800;font-size:13px;color:#0f172a;">İNDİR\'e basınca</div>' +
             '<button type="button" data-otopol style="padding:9px 10px;border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;text-align:left;"></button>' +
             '<button type="button" data-ototek style="padding:9px 10px;border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;text-align:left;"></button>' +
+            '<div style="font-weight:800;font-size:13px;color:#0f172a;margin-top:4px;">Klasör seçince</div>' +
+            '<button type="button" data-ototarih style="padding:9px 10px;border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;text-align:left;"></button>' +
             '<div style="font-weight:600;font-size:11.5px;color:#64748b;line-height:1.4;">Açık: sormadan hazır isimle iner.<br>Kapalı: hangi isimle kaydedileceğini sorar.</div>' +
             '</div></div>' +
             '<button type="button" data-print style="padding:7px 14px;border-radius:8px;background:#fff;color:#334155;font-weight:700;font-size:12.5px;border:1px solid #d5dbe6;cursor:pointer;white-space:nowrap;">YAZDIR</button>' +
@@ -145,6 +147,7 @@
         ov.addEventListener('click', e => { if (!e.target.closest('[data-setbox],[data-set]')) sx.style.display = 'none'; });
         ov.querySelector('[data-otopol]').addEventListener('click', async () => { otoPol = !otoPol; try { await idbSet('otoPol', otoPol); } catch (e) {} vRender(); });
         ov.querySelector('[data-ototek]').addEventListener('click', async () => { otoTek = !otoTek; try { await idbSet('otoTek', otoTek); } catch (e) {} vRender(); });
+        ov.querySelector('[data-ototarih]').addEventListener('click', async () => { otoTarih = !otoTarih; try { await idbSet('otoTarih', otoTarih); } catch (e) {} if (otoTarih) await otoGunKlasor(); vRender(); });
         ov.addEventListener('mousedown', e => { if (e.target === ov) vClose(); });
         document.addEventListener('keydown', vKey, true);
         document.body.appendChild(ov);
@@ -180,9 +183,11 @@
         };
         stil(V.ov.querySelector('[data-otopol]'), otoPol, 'Poliçe / Makbuz');
         stil(V.ov.querySelector('[data-ototek]'), otoTek, 'Teklif');
+        { const tb = V.ov.querySelector('[data-ototarih]'); tb.textContent = otoTarih ? '✔ Tarihli klasör aç: AÇIK' : '✖ Tarihli klasör: KAPALI (direkt seçtiğim klasöre)'; tb.style.background = otoTarih ? '#dcfce7' : '#fee2e2'; tb.style.color = otoTarih ? '#166534' : '#991b1b'; tb.style.border = '1px solid ' + (otoTarih ? '#86efac' : '#fecaca'); }
         const gb = V.ov.querySelector('[data-gun]');
-        gb.textContent = masa ? '📅 MASAÜSTÜ: ' + gunStr() : (dirHandle ? '📅 BUGÜN: ' + gunAd('Poliçeler') : '📅 BUGÜN');
+        gb.textContent = masa ? '📅 MASAÜSTÜ: ' + gunStr() : (dirHandle && otoTarih ? '📅 BUGÜN: ' + gunAd('Poliçeler') : '📅 BUGÜN');
         gb.onclick = gunlukKur;
+        gb.style.display = (dirHandle && !otoTarih && !masa) ? 'none' : '';
         { const ak = !!(dirHandle || masa); gb.style.background = ak ? '#dcfce7' : '#fff7ed'; gb.style.color = ak ? '#166534' : '#9a3412'; gb.style.border = '2px solid ' + (ak ? '#16a34a' : '#fed7aa'); }
         fo.style.display = (dirHandle || masa) ? '' : 'none';
         fo.onclick = async () => { dirHandle = null; gunluk = false; masa = false; try { await idbSet('dir', null); await idbSet('gunluk', false); await idbSet('masa', false); } catch (e) {} vRender(); };
@@ -228,7 +233,7 @@
     }
     // ---- Klasöre kaydetme (File System Access API) ve indirme yardımcıları ----
     let dirHandle = null, gunluk = false, masa = false;
-    let otoPol = true, otoTek = false;   // ⚙ Ayarlar: true = İNDİR'e basınca sormadan hazır isimle indir, false = isim sor
+    let otoPol = true, otoTek = false, otoTarih = true;   // ⚙ Ayarlar: true = İNDİR'e basınca sormadan hazır isimle indir, false = isim sor
     const helperSurum = () => parseFloat(document.documentElement.getAttribute('data-astra-helper') || '0');
     const gunStr = () => { const d = new Date(), z = n => String(n).padStart(2, '0'); return z(d.getDate()) + '.' + z(d.getMonth() + 1) + '.' + d.getFullYear(); };
     const gunAd = tur => gunStr() + ' ' + tur;                       // örn. 24.11.2026 Poliçeler
@@ -236,7 +241,7 @@
     const idbOpen = () => new Promise((res, rej) => { const r = indexedDB.open('astra-tema', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
     async function idbGet(k) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
     async function idbSet(k, v) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction('kv', 'readwrite').objectStore('kv').put(v, k); q.onsuccess = () => res(); q.onerror = () => rej(q.error); }); }
-    function loadDir() { try { idbGet('dir').then(h => { if (h) { dirHandle = h; gunluk = true; vRender(); otoGunKlasor().then(vRender); } }).catch(() => {}); idbGet('gunluk').then(g => { if (dirHandle) gunluk = true; else gunluk = !!g; vRender(); }).catch(() => {}); idbGet('masa').then(m => { masa = !!m; vRender(); if (masa) otoGunKlasor().then(vRender); }).catch(() => {}); idbGet('otoPol').then(v => { if (typeof v === 'boolean') { otoPol = v; vRender(); } }).catch(() => {}); idbGet('otoTek').then(v => { if (typeof v === 'boolean') { otoTek = v; vRender(); } }).catch(() => {}); } catch (e) {} }
+    function loadDir() { try { idbGet('dir').then(h => { if (h) { dirHandle = h; gunluk = true; vRender(); } }).catch(() => {}); idbGet('gunluk').then(g => { if (dirHandle) gunluk = true; else gunluk = !!g; vRender(); }).catch(() => {}); idbGet('masa').then(m => { masa = !!m; vRender(); if (masa) otoGunKlasor().then(vRender); }).catch(() => {}); idbGet('otoPol').then(v => { if (typeof v === 'boolean') { otoPol = v; vRender(); } }).catch(() => {}); idbGet('otoTek').then(v => { if (typeof v === 'boolean') { otoTek = v; vRender(); } }).catch(() => {}); idbGet('otoTarih').then(v => { if (typeof v === 'boolean') otoTarih = v; vRender(); if (dirHandle) otoGunKlasor().then(vRender); }).catch(() => {}); } catch (e) {} }
     // OTOMATİK: bugünün Poliçeler/Teklifler klasörlerini düğmeye basmadan kurar (günde bir kez; izin yoksa sessizce atlar, indirirken zaten oluşur)
     let otoGunSon = '';
     async function otoGunKlasor() {
@@ -254,6 +259,7 @@
                 }
                 return;
             }
+            if (!otoTarih) return;   // tarihli klasör ayarı kapalı
             const p = await dirHandle.queryPermission({ mode: 'readwrite' });
             if (p !== 'granted') return;   // izin sonra indirirken istenir
             const a = await gunDir('Poliçeler'), b = await gunDir('Teklifler');
@@ -450,11 +456,7 @@
                 }
                 if (dirHandle && await ensureDirPerm()) {
                     let hedef = dirHandle, yer = dirHandle.name, yok = false;
-                    if (gunluk || dirHandle) { const g = await gunDir(turAd(ad)); hedef = g.dir; yer = g.ad; }
-                    else if (V.mode === 'police') {   // poliçe/makbuz: seçili klasördeki POLİÇELER klasörüne
-                        const pk = await policeKlasoru();
-                        if (pk) { hedef = pk; yer = pk.name; } else yok = true;
-                    }
+                    if (otoTarih) { const g = await gunDir(turAd(ad)); hedef = g.dir; yer = g.ad; }
                     const son = await saveToDir(ad, blob, hedef);
                     if (!quiet) vNotify('✔ İndirildi  →  📁 ' + yer + '\n' + son + (yok ? '\n(POLİÇELER klasörü bulunamadı, seçili klasöre kaydedildi)' : ''), yok ? 'err' : 'ok');
                     return { yer, ad: son };
