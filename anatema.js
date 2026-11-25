@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Astr
 // @namespace    astra-sade-tema
-// @version      3.6
+// @version      3.8
 // @description  Anadolu Sigorta Astra arayüzünü sadeleştirir, modern ve profesyonel bir görünüm verir
 // @match        https://astra.anadolusigorta.com.tr/*
 // @run-at       document-start
@@ -149,6 +149,7 @@
         document.addEventListener('keydown', vKey, true);
         document.body.appendChild(ov);
         V.ov = ov;
+        otoGunKlasor().then(vRender);
     }
     function vRender() {
         if (!V.ov) return;
@@ -164,7 +165,12 @@
         });
         const t = V.tabs[V.act];
         const fb = V.ov.querySelector('[data-folder]'), fo = V.ov.querySelector('[data-folderoff]'), ab = V.ov.querySelector('[data-all]');
-        fb.textContent = dirHandle ? '📁 ' + dirHandle.name : '📁 KLASÖR SEÇ';
+        fb.textContent = dirHandle ? '✔ 📁 ' + dirHandle.name : '📁 KLASÖR SEÇ';
+        fb.title = dirHandle ? 'Seçili klasör: ' + dirHandle.name + '  (değiştirmek için tıkla)' : 'PDF\'lerin kaydedileceği klasörü seç';
+        fb.style.background = dirHandle ? '#dcfce7' : '#fef3c7';
+        fb.style.color = dirHandle ? '#166534' : '#92400e';
+        fb.style.border = '2px solid ' + (dirHandle ? '#16a34a' : '#f59e0b');
+        fb.style.maxWidth = '260px';
         fb.onclick = pickDir;
         const stil = (b, acik, ad) => {
             b.textContent = (acik ? '✔ ' : '✖ ') + ad + (acik ? ': otomatik indir' : ': isim sor');
@@ -175,8 +181,9 @@
         stil(V.ov.querySelector('[data-otopol]'), otoPol, 'Poliçe / Makbuz');
         stil(V.ov.querySelector('[data-ototek]'), otoTek, 'Teklif');
         const gb = V.ov.querySelector('[data-gun]');
-        gb.textContent = masa ? '📅 MASAÜSTÜ: ' + gunStr() : (gunluk && dirHandle ? '📅 BUGÜN: ' + gunAd('Poliçeler') : '📅 BUGÜN');
+        gb.textContent = masa ? '📅 MASAÜSTÜ: ' + gunStr() : (dirHandle ? '📅 BUGÜN: ' + gunAd('Poliçeler') : '📅 BUGÜN');
         gb.onclick = gunlukKur;
+        { const ak = !!(dirHandle || masa); gb.style.background = ak ? '#dcfce7' : '#fff7ed'; gb.style.color = ak ? '#166534' : '#9a3412'; gb.style.border = '2px solid ' + (ak ? '#16a34a' : '#fed7aa'); }
         fo.style.display = (dirHandle || masa) ? '' : 'none';
         fo.onclick = async () => { dirHandle = null; gunluk = false; masa = false; try { await idbSet('dir', null); await idbSet('gunluk', false); await idbSet('masa', false); } catch (e) {} vRender(); };
         ab.style.display = V.tabs.filter(x => x.url).length >= 2 ? '' : 'none';
@@ -229,7 +236,31 @@
     const idbOpen = () => new Promise((res, rej) => { const r = indexedDB.open('astra-tema', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
     async function idbGet(k) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
     async function idbSet(k, v) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction('kv', 'readwrite').objectStore('kv').put(v, k); q.onsuccess = () => res(); q.onerror = () => rej(q.error); }); }
-    function loadDir() { try { idbGet('dir').then(h => { if (h) { dirHandle = h; vRender(); } }).catch(() => {}); idbGet('gunluk').then(g => { gunluk = !!g; vRender(); }).catch(() => {}); idbGet('masa').then(m => { masa = !!m; vRender(); }).catch(() => {}); idbGet('otoPol').then(v => { if (typeof v === 'boolean') { otoPol = v; vRender(); } }).catch(() => {}); idbGet('otoTek').then(v => { if (typeof v === 'boolean') { otoTek = v; vRender(); } }).catch(() => {}); } catch (e) {} }
+    function loadDir() { try { idbGet('dir').then(h => { if (h) { dirHandle = h; gunluk = true; vRender(); otoGunKlasor().then(vRender); } }).catch(() => {}); idbGet('gunluk').then(g => { if (dirHandle) gunluk = true; else gunluk = !!g; vRender(); }).catch(() => {}); idbGet('masa').then(m => { masa = !!m; vRender(); if (masa) otoGunKlasor().then(vRender); }).catch(() => {}); idbGet('otoPol').then(v => { if (typeof v === 'boolean') { otoPol = v; vRender(); } }).catch(() => {}); idbGet('otoTek').then(v => { if (typeof v === 'boolean') { otoTek = v; vRender(); } }).catch(() => {}); } catch (e) {} }
+    // OTOMATİK: bugünün Poliçeler/Teklifler klasörlerini düğmeye basmadan kurar (günde bir kez; izin yoksa sessizce atlar, indirirken zaten oluşur)
+    let otoGunSon = '';
+    async function otoGunKlasor() {
+        const bugun = gunStr();
+        if (otoGunSon === bugun) return;
+        try {
+            if (!dirHandle) {
+                if (masa && helperSurum() >= 1.2) {
+                    let son = ''; try { son = localStorage.getItem('astraMasaGun') || ''; } catch (e) {}
+                    if (son === bugun) { otoGunSon = bugun; return; }
+                    const not = new Blob(['Bu dosyayı silebilirsin; klasörü oluşturmak için bırakıldı.'], { type: 'text/plain' });
+                    const o1 = await helperKaydet(gunAd('Poliçeler') + '/klasör.txt', not, 'text/plain');
+                    const o2 = await helperKaydet(gunAd('Teklifler') + '/klasör.txt', not, 'text/plain');
+                    if (o1 && o2) { try { localStorage.setItem('astraMasaGun', bugun); } catch (e) {} otoGunSon = bugun; if (V.ov) vNotify('📅 Bugünün klasörleri otomatik oluşturuldu\n📁 ' + gunAd('Poliçeler') + '\n📁 ' + gunAd('Teklifler'), 'ok', 5000); }
+                }
+                return;
+            }
+            const p = await dirHandle.queryPermission({ mode: 'readwrite' });
+            if (p !== 'granted') return;   // izin sonra indirirken istenir
+            const a = await gunDir('Poliçeler'), b = await gunDir('Teklifler');
+            gunluk = true; otoGunSon = bugun;
+            if ((a.yeni || b.yeni) && V.ov) vNotify('📅 Bugünün klasörleri otomatik oluşturuldu\n📁 ' + a.ad + '\n📁 ' + b.ad, 'ok', 5000);
+        } catch (e) { /* sessizce geç */ }
+    }
     // Seçili klasörün içinde bugünün klasörünü bul/oluştur. {dir, yeni}
     async function gunDir(tur) {
         const ad = gunAd(tur);
@@ -284,7 +315,7 @@
         if (!window.showDirectoryPicker) return;
         try {
             const h = await window.showDirectoryPicker({ id: 'astra-pdf', mode: 'readwrite', startIn: 'desktop' });
-            dirHandle = h; await idbSet('dir', h);
+            dirHandle = h; gunluk = true; await idbSet('dir', h); try { await idbSet('gunluk', true); } catch (e) {} otoGunSon = ''; await otoGunKlasor();
         } catch (e) { /* iptal edildi ya da klasör reddedildi */ }
         vRender();
     }
@@ -419,7 +450,7 @@
                 }
                 if (dirHandle && await ensureDirPerm()) {
                     let hedef = dirHandle, yer = dirHandle.name, yok = false;
-                    if (gunluk) { const g = await gunDir(turAd(ad)); hedef = g.dir; yer = g.ad; }
+                    if (gunluk || dirHandle) { const g = await gunDir(turAd(ad)); hedef = g.dir; yer = g.ad; }
                     else if (V.mode === 'police') {   // poliçe/makbuz: seçili klasördeki POLİÇELER klasörüne
                         const pk = await policeKlasoru();
                         if (pk) { hedef = pk; yer = pk.name; } else yok = true;
