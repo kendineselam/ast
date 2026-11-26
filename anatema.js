@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Astr
 // @namespace    astra-sade-tema
-// @version      3.9
+// @version      3.7
 // @description  Anadolu Sigorta Astra arayüzünü sadeleştirir, modern ve profesyonel bir görünüm verir
 // @match        https://astra.anadolusigorta.com.tr/*
 // @run-at       document-start
@@ -134,8 +134,6 @@
             '<div style="font-weight:800;font-size:13px;color:#0f172a;">İNDİR\'e basınca</div>' +
             '<button type="button" data-otopol style="padding:9px 10px;border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;text-align:left;"></button>' +
             '<button type="button" data-ototek style="padding:9px 10px;border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;text-align:left;"></button>' +
-            '<div style="font-weight:800;font-size:13px;color:#0f172a;margin-top:4px;">Klasör seçince</div>' +
-            '<button type="button" data-ototarih style="padding:9px 10px;border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;text-align:left;"></button>' +
             '<div style="font-weight:600;font-size:11.5px;color:#64748b;line-height:1.4;">Açık: sormadan hazır isimle iner.<br>Kapalı: hangi isimle kaydedileceğini sorar.</div>' +
             '</div></div>' +
             '<button type="button" data-print style="padding:7px 14px;border-radius:8px;background:#fff;color:#334155;font-weight:700;font-size:12.5px;border:1px solid #d5dbe6;cursor:pointer;white-space:nowrap;">YAZDIR</button>' +
@@ -147,12 +145,10 @@
         ov.addEventListener('click', e => { if (!e.target.closest('[data-setbox],[data-set]')) sx.style.display = 'none'; });
         ov.querySelector('[data-otopol]').addEventListener('click', async () => { otoPol = !otoPol; try { await idbSet('otoPol', otoPol); } catch (e) {} vRender(); });
         ov.querySelector('[data-ototek]').addEventListener('click', async () => { otoTek = !otoTek; try { await idbSet('otoTek', otoTek); } catch (e) {} vRender(); });
-        ov.querySelector('[data-ototarih]').addEventListener('click', async () => { otoTarih = !otoTarih; try { await idbSet('otoTarih', otoTarih); } catch (e) {} if (otoTarih) await otoGunKlasor(); vRender(); });
         ov.addEventListener('mousedown', e => { if (e.target === ov) vClose(); });
         document.addEventListener('keydown', vKey, true);
         document.body.appendChild(ov);
         V.ov = ov;
-        otoGunKlasor().then(vRender);
     }
     function vRender() {
         if (!V.ov) return;
@@ -168,12 +164,7 @@
         });
         const t = V.tabs[V.act];
         const fb = V.ov.querySelector('[data-folder]'), fo = V.ov.querySelector('[data-folderoff]'), ab = V.ov.querySelector('[data-all]');
-        fb.textContent = dirHandle ? '✔ 📁 ' + dirHandle.name : '📁 KLASÖR SEÇ';
-        fb.title = dirHandle ? 'Seçili klasör: ' + dirHandle.name + '  (değiştirmek için tıkla)' : 'PDF\'lerin kaydedileceği klasörü seç';
-        fb.style.background = dirHandle ? '#dcfce7' : '#fef3c7';
-        fb.style.color = dirHandle ? '#166534' : '#92400e';
-        fb.style.border = '2px solid ' + (dirHandle ? '#16a34a' : '#f59e0b');
-        fb.style.maxWidth = '260px';
+        fb.textContent = dirHandle ? '📁 ' + dirHandle.name : '📁 KLASÖR SEÇ';
         fb.onclick = pickDir;
         const stil = (b, acik, ad) => {
             b.textContent = (acik ? '✔ ' : '✖ ') + ad + (acik ? ': otomatik indir' : ': isim sor');
@@ -183,12 +174,9 @@
         };
         stil(V.ov.querySelector('[data-otopol]'), otoPol, 'Poliçe / Makbuz');
         stil(V.ov.querySelector('[data-ototek]'), otoTek, 'Teklif');
-        { const tb = V.ov.querySelector('[data-ototarih]'); tb.textContent = otoTarih ? '✔ Tarihli klasör aç: AÇIK' : '✖ Tarihli klasör: KAPALI (direkt seçtiğim klasöre)'; tb.style.background = otoTarih ? '#dcfce7' : '#fee2e2'; tb.style.color = otoTarih ? '#166534' : '#991b1b'; tb.style.border = '1px solid ' + (otoTarih ? '#86efac' : '#fecaca'); }
         const gb = V.ov.querySelector('[data-gun]');
-        gb.textContent = masa ? '📅 MASAÜSTÜ: ' + gunStr() : (dirHandle && otoTarih ? '📅 BUGÜN: ' + gunAd('Poliçeler') : '📅 BUGÜN');
+        gb.textContent = masa ? '📅 MASAÜSTÜ: ' + gunStr() : (gunluk && dirHandle ? '📅 BUGÜN: ' + gunAd('Poliçeler') : '📅 BUGÜN');
         gb.onclick = gunlukKur;
-        gb.style.display = (dirHandle && !otoTarih && !masa) ? 'none' : '';
-        { const ak = !!(dirHandle || masa); gb.style.background = ak ? '#dcfce7' : '#fff7ed'; gb.style.color = ak ? '#166534' : '#9a3412'; gb.style.border = '2px solid ' + (ak ? '#16a34a' : '#fed7aa'); }
         fo.style.display = (dirHandle || masa) ? '' : 'none';
         fo.onclick = async () => { dirHandle = null; gunluk = false; masa = false; try { await idbSet('dir', null); await idbSet('gunluk', false); await idbSet('masa', false); } catch (e) {} vRender(); };
         ab.style.display = V.tabs.filter(x => x.url).length >= 2 ? '' : 'none';
@@ -233,7 +221,7 @@
     }
     // ---- Klasöre kaydetme (File System Access API) ve indirme yardımcıları ----
     let dirHandle = null, gunluk = false, masa = false;
-    let otoPol = true, otoTek = false, otoTarih = true;   // ⚙ Ayarlar: true = İNDİR'e basınca sormadan hazır isimle indir, false = isim sor
+    let otoPol = true, otoTek = false;   // ⚙ Ayarlar: true = İNDİR'e basınca sormadan hazır isimle indir, false = isim sor
     const helperSurum = () => parseFloat(document.documentElement.getAttribute('data-astra-helper') || '0');
     const gunStr = () => { const d = new Date(), z = n => String(n).padStart(2, '0'); return z(d.getDate()) + '.' + z(d.getMonth() + 1) + '.' + d.getFullYear(); };
     const gunAd = tur => gunStr() + ' ' + tur;                       // örn. 24.11.2026 Poliçeler
@@ -241,32 +229,7 @@
     const idbOpen = () => new Promise((res, rej) => { const r = indexedDB.open('astra-tema', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
     async function idbGet(k) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
     async function idbSet(k, v) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction('kv', 'readwrite').objectStore('kv').put(v, k); q.onsuccess = () => res(); q.onerror = () => rej(q.error); }); }
-    function loadDir() { try { idbGet('dir').then(h => { if (h) { dirHandle = h; gunluk = true; vRender(); } }).catch(() => {}); idbGet('gunluk').then(g => { if (dirHandle) gunluk = true; else gunluk = !!g; vRender(); }).catch(() => {}); idbGet('masa').then(m => { masa = !!m; vRender(); if (masa) otoGunKlasor().then(vRender); }).catch(() => {}); idbGet('otoPol').then(v => { if (typeof v === 'boolean') { otoPol = v; vRender(); } }).catch(() => {}); idbGet('otoTek').then(v => { if (typeof v === 'boolean') { otoTek = v; vRender(); } }).catch(() => {}); idbGet('otoTarih').then(v => { if (typeof v === 'boolean') otoTarih = v; vRender(); if (dirHandle) otoGunKlasor().then(vRender); }).catch(() => {}); } catch (e) {} }
-    // OTOMATİK: bugünün Poliçeler/Teklifler klasörlerini düğmeye basmadan kurar (günde bir kez; izin yoksa sessizce atlar, indirirken zaten oluşur)
-    let otoGunSon = '';
-    async function otoGunKlasor() {
-        const bugun = gunStr();
-        if (otoGunSon === bugun) return;
-        try {
-            if (!dirHandle) {
-                if (masa && helperSurum() >= 1.2) {
-                    let son = ''; try { son = localStorage.getItem('astraMasaGun') || ''; } catch (e) {}
-                    if (son === bugun) { otoGunSon = bugun; return; }
-                    const not = new Blob(['Bu dosyayı silebilirsin; klasörü oluşturmak için bırakıldı.'], { type: 'text/plain' });
-                    const o1 = await helperKaydet(gunAd('Poliçeler') + '/klasör.txt', not, 'text/plain');
-                    const o2 = await helperKaydet(gunAd('Teklifler') + '/klasör.txt', not, 'text/plain');
-                    if (o1 && o2) { try { localStorage.setItem('astraMasaGun', bugun); } catch (e) {} otoGunSon = bugun; if (V.ov) vNotify('📅 Bugünün klasörleri otomatik oluşturuldu\n📁 ' + gunAd('Poliçeler') + '\n📁 ' + gunAd('Teklifler'), 'ok', 5000); }
-                }
-                return;
-            }
-            if (!otoTarih) return;   // tarihli klasör ayarı kapalı
-            const p = await dirHandle.queryPermission({ mode: 'readwrite' });
-            if (p !== 'granted') return;   // izin sonra indirirken istenir
-            const a = await gunDir('Poliçeler'), b = await gunDir('Teklifler');
-            gunluk = true; otoGunSon = bugun;
-            if ((a.yeni || b.yeni) && V.ov) vNotify('📅 Bugünün klasörleri otomatik oluşturuldu\n📁 ' + a.ad + '\n📁 ' + b.ad, 'ok', 5000);
-        } catch (e) { /* sessizce geç */ }
-    }
+    function loadDir() { try { idbGet('dir').then(h => { if (h) { dirHandle = h; vRender(); } }).catch(() => {}); idbGet('gunluk').then(g => { gunluk = !!g; vRender(); }).catch(() => {}); idbGet('masa').then(m => { masa = !!m; vRender(); }).catch(() => {}); idbGet('otoPol').then(v => { if (typeof v === 'boolean') { otoPol = v; vRender(); } }).catch(() => {}); idbGet('otoTek').then(v => { if (typeof v === 'boolean') { otoTek = v; vRender(); } }).catch(() => {}); } catch (e) {} }
     // Seçili klasörün içinde bugünün klasörünü bul/oluştur. {dir, yeni}
     async function gunDir(tur) {
         const ad = gunAd(tur);
@@ -321,7 +284,7 @@
         if (!window.showDirectoryPicker) return;
         try {
             const h = await window.showDirectoryPicker({ id: 'astra-pdf', mode: 'readwrite', startIn: 'desktop' });
-            dirHandle = h; gunluk = true; await idbSet('dir', h); try { await idbSet('gunluk', true); } catch (e) {} otoGunSon = ''; await otoGunKlasor();
+            dirHandle = h; await idbSet('dir', h);
         } catch (e) { /* iptal edildi ya da klasör reddedildi */ }
         vRender();
     }
@@ -456,7 +419,11 @@
                 }
                 if (dirHandle && await ensureDirPerm()) {
                     let hedef = dirHandle, yer = dirHandle.name, yok = false;
-                    if (otoTarih) { const g = await gunDir(turAd(ad)); hedef = g.dir; yer = g.ad; }
+                    if (gunluk) { const g = await gunDir(turAd(ad)); hedef = g.dir; yer = g.ad; }
+                    else if (V.mode === 'police') {   // poliçe/makbuz: seçili klasördeki POLİÇELER klasörüne
+                        const pk = await policeKlasoru();
+                        if (pk) { hedef = pk; yer = pk.name; } else yok = true;
+                    }
                     const son = await saveToDir(ad, blob, hedef);
                     if (!quiet) vNotify('✔ İndirildi  →  📁 ' + yer + '\n' + son + (yok ? '\n(POLİÇELER klasörü bulunamadı, seçili klasöre kaydedildi)' : ''), yok ? 'err' : 'ok');
                     return { yer, ad: son };
@@ -617,7 +584,14 @@
                     if (c) await pressCard(c, () => !!ulVisible());
                     if (!ulVisible()) { try { window.CreatePolicyView.Actions.GetView('Production/PolicyDocument2', true); } catch (e) {} await waitFor(ulVisible, 3000); }
                 }
-                const li = await waitFor(() => document.querySelector('#carouselImages li.' + (polis ? 'astra-doc-police' : 'astra-doc-teklif')), 6000);
+                // eski (orijinal) tasarımda da bulunsun: önce işaretli kart, yoksa etiket yazısından (tüm slaytlarda) ara
+                const bulKart = () => document.querySelector('#carouselImages li.' + (polis ? 'astra-doc-police' : 'astra-doc-teklif')) ||
+                    Array.from(document.querySelectorAll('#carouselImages li')).find(x => {
+                        if (x.classList.contains('astra-makbuz-card')) return false;
+                        const lb = x.querySelector('a label'); const n = ((lb && lb.textContent) || '').trim().toLocaleUpperCase('tr');
+                        return n === tur || n.indexOf(tur) === 0;
+                    });
+                const li = await waitFor(bulKart, 6000);
                 if (V.ov !== cur) return;
                 const a = li && li.querySelector('.thumbnail > a');
                 if (!a) { await sleep(1500); continue; }   // belge kartı henüz gelmedi: biraz bekle, tekrar dene
@@ -2020,7 +1994,57 @@
         document.body.appendChild(w);
     }
 
-    function run() { snapInfo(); fab(); kisayol(); wrapGetView(); badgeify(); sortDocs(); wrapPdfMake(); addMakbuz(); autoHop(); launcher(); }
+    // ---- SBM OTO: kutunun en altında yanıp sönen düğme + Değer alanlarını otomatik doldur ----
+    const SBM_KOD = '9d21cf41f7ee94e5380a2e678dba9050';   // #selectPQValueCode_2129 alanına yazılır
+    const SBM_DEGER = '9999';                              // #inputPQValue_1671 alanı boşsa kendisi gelir
+    function yazDeger(el, v) {
+        try {
+            const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+            set.call(el, v);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));   // sitenin onchange'i (CheckQuestionAnswer) çalışsın
+        } catch (e) { el.value = v; }
+    }
+    function sbmDegerler() {
+        const el = document.getElementById('inputPQValue_1671');
+        if (el && el.dataset.astra9999 !== '1' && !String(el.value || '').trim()) {
+            el.dataset.astra9999 = '1';
+            yazDeger(el, SBM_DEGER);
+        }
+    }
+    async function sbmOtoBas(btn) {
+        gStat('SBM OTO: Değer Kodu alanı aranıyor...');
+        const el = await waitFor(() => document.getElementById('selectPQValueCode_2129'), 8000);
+        if (!el) { gStat('Değer Kodu alanı ekranda yok. İlgili bölümü açıp tekrar bas.'); setTimeout(() => gStat(''), 6000); return; }
+        yazDeger(el, SBM_KOD);
+        btn.dataset.done = '1';
+        gStat('✔ SBM OTO: değer kodu yazıldı');
+        setTimeout(() => gStat(''), 3500);
+    }
+    function sbmOto() {
+        sbmDegerler();
+        const area = document.getElementById('production-box-area-content');
+        const body = area && area.parentElement;
+        let b = document.getElementById('astra-sbm-oto');
+        if (!body) { if (b) b.remove(); return; }
+        if (!document.getElementById('astra-sbm-css')) {
+            const st = document.createElement('style'); st.id = 'astra-sbm-css';
+            st.textContent =
+                '@keyframes astraSbm{0%,100%{background:#dc2626;box-shadow:0 0 0 0 rgba(220,38,38,.55);}50%{background:#f97316;box-shadow:0 0 0 10px rgba(249,115,22,0);}}' +
+                '#astra-sbm-oto{display:block;width:100%;margin:12px 0 4px;padding:13px 16px;border:0;border-radius:12px;color:#fff;font:800 15px Segoe UI,system-ui,Arial,sans-serif;letter-spacing:.6px;cursor:pointer;animation:astraSbm 1s ease-in-out infinite;}' +
+                '#astra-sbm-oto[data-done="1"]{animation:none;background:#16a34a;}' +
+                '#astra-sbm-oto:hover{filter:brightness(1.1);}';
+            document.head.appendChild(st);
+        }
+        if (!b) {
+            b = document.createElement('button');
+            b.id = 'astra-sbm-oto'; b.type = 'button'; b.textContent = '⚡ SBM OTO';
+            b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); sbmOtoBas(b); });
+        }
+        if (body.lastElementChild !== b) body.appendChild(b);   // her zaman kutunun en altında
+    }
+
+    function run() { snapInfo(); fab(); kisayol(); sbmOto(); wrapGetView(); badgeify(); sortDocs(); wrapPdfMake(); addMakbuz(); autoHop(); launcher(); }
 
     // Debounce: sayfa her değiştiğinde değil, sakinleşince bir kez çalışır
     let timer = 0;
