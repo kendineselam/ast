@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Astr
 // @namespace    astra-sade-tema
-// @version      4.0
+// @version      4.1
 // @description  Anadolu Sigorta Astra arayüzünü sadeleştirir, modern ve profesyonel bir görünüm verir
 // @match        https://astra.anadolusigorta.com.tr/*
 // @run-at       document-start
@@ -20,15 +20,15 @@
     const URUN_KISA_AD = { '439': 'TIBBİ' };
     // Ürün adında bu kelimeler geçerse kısa ad kullanılır (yukarıdan aşağıya ilk eşleşen kazanır)
     const URUN_KISA_KURAL = [
-        [/HEK[İI]M/, 'HEKİM SOR'],
-        [/MESLEK/, 'MESLEKİ SOR'],
+        [/HEK[İI]M/, 'HEKİM'],
+        [/MESLEK/, 'MESLEKİ'],
         [/TIBB[İI]/, 'TIBBİ']
     ];
     function kisaUrun(tam) {
         if (!tam || tam === '-') return '';
         const U = tam.toLocaleUpperCase('tr');
         for (const [re, ad] of URUN_KISA_KURAL) if (re.test(U)) return ad;
-        return U.replace(/\s+S[İI]GORTA(SI)?\s*$/, '').replace(/SORUMLULU[KĞ]U?/g, 'SOR').trim();
+        return U.replace(/\s+S[İI]GORTA(SI)?\s*$/, '').replace(/\s*SORUMLULU[KĞ]U?/g, '').trim();
     }
     const PDF_ARAC_CUBUGU_GIZLE = true;   // true: pencerede tarayıcının kendi PDF araç çubuğu (kodlu adla indiren indirme düğmesi) gizlenir, sadece bizim İNDİR kullanılır
     const FX_KAPAT = true;    // false yaparsan jQuery animasyonları site gibi kalır
@@ -2094,7 +2094,51 @@
         document.addEventListener('input', tut, true);
     })();
 
-    function run() { snapInfo(); fab(); kisayol(); sbmOto(); wrapGetView(); badgeify(); sortDocs(); wrapPdfMake(); addMakbuz(); autoHop(); launcher(); }
+    // ---- select2 listeleri (Değer Kodu vb.): aynı liste ikinci kez istenirse önbellekten anında gelsin ----
+    const AJ_CACHE = {};
+    let sel2Zaman = 0;
+    const sel2Isaretle = e => { try { if (e.target && e.target.closest && e.target.closest('.select2-container, .select2-selection, .select2-search__field, .select2-dropdown')) sel2Zaman = Date.now(); } catch (x) {} };
+    document.addEventListener('mousedown', sel2Isaretle, true);
+    document.addEventListener('keydown', sel2Isaretle, true);
+    document.addEventListener('keyup', sel2Isaretle, true);
+    function wrapAjax() {
+        const $ = window.jQuery;
+        if (!$ || typeof $.ajax !== 'function' || $.ajax.__astra) return;
+        const orig = $.ajax;
+        const yeni = function (a, b) {
+            try {
+                const o = (a && typeof a === 'object') ? a : null;
+                if (o && typeof o.url === 'string' && o.async !== false && Date.now() - sel2Zaman < 3000 && (typeof o.success === 'function' || !o.success)) {
+                    const tip = String(o.type || o.method || 'GET').toUpperCase();
+                    const key = tip + ' ' + o.url + ' ' + (typeof o.data === 'string' ? o.data : JSON.stringify(o.data || ''));
+                    const hit = AJ_CACHE[key];
+                    if (hit && Date.now() - hit.t < 600000) {
+                        const d = $.Deferred();
+                        const p = d.promise(); p.abort = function () {};
+                        setTimeout(() => {
+                            try { if (o.success) o.success.call(o.context || o, hit.data, 'success', p); } catch (e) {}
+                            try { if (o.complete) o.complete.call(o.context || o, p, 'success'); } catch (e) {}
+                            d.resolve(hit.data, 'success', p);
+                        }, 0);
+                        return p;
+                    }
+                    const o2 = Object.assign({}, o);
+                    const s = o.success;
+                    o2.success = function (data) {
+                        AJ_CACHE[key] = { data, t: Date.now() };
+                        if (s) return s.apply(this, arguments);
+                    };
+                    return orig.call(this, o2);
+                }
+            } catch (e) { /* sessizce geç */ }
+            return orig.apply(this, arguments);
+        };
+        yeni.__astra = true;
+        Object.keys(orig).forEach(k => { try { yeni[k] = orig[k]; } catch (e) {} });
+        $.ajax = yeni;
+    }
+
+    function run() { snapInfo(); fab(); kisayol(); sbmOto(); wrapGetView(); wrapAjax(); badgeify(); sortDocs(); wrapPdfMake(); addMakbuz(); autoHop(); launcher(); }
 
     // Debounce: sayfa her değiştiğinde değil, sakinleşince bir kez çalışır
     let timer = 0;
@@ -2106,7 +2150,7 @@
     document.addEventListener('click', () => setTimeout(schedule, 300), true);
 
     function init() {
-        toast('Astra Tema v4.0 yüklendi', 3500);
+        toast('Astra Tema v4.1 yüklendi', 3500);
         loadDir();
         try {
             const g = sessionStorage.getItem('astraGo');
