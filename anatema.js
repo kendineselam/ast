@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Astr
 // @namespace    astra-sade-tema
-// @version      3.7
+// @version      3.8
 // @description  Anadolu Sigorta Astra arayüzünü sadeleştirir, modern ve profesyonel bir görünüm verir
 // @match        https://astra.anadolusigorta.com.tr/*
 // @run-at       document-start
@@ -298,7 +298,7 @@
     }
     // Seçili klasörde (sırayla: kendisi, içindekiler, bir alt seviye) adı "poliç..." ile başlayan klasörü bulur.
     // Büyük/küçük harf, İ/ı, Ç/C ve birleşik/ayrık Türkçe karakter farkı önemli değil: POLİÇELER, Poliçeler, POLICELER...
-    const polAdi = ad => ad.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/ç/g, 'c').trim();
+    const polAdi = ad => ad.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/ç/g, 'c').trim();
     const polMu = ad => /^polic/.test(polAdi(ad));
     async function policeKlasoru() {
         if (!dirHandle) return null;
@@ -541,7 +541,11 @@
             vSet('doc', 'Makbuz', directUrl, adlandir('MAKBUZ', 0, 1) || fname);
         } else {
             const lb = lastThumbLabel || title;
-            const tur = /^\s*tekl/i.test(lb) ? 'TEKLİF' : (/^\s*pol/i.test(lb) ? 'POLİÇE' : (/tekl/i.test(title) ? 'TEKLİF' : (/pol/i.test(title) ? 'POLİÇE' : '')));
+            // Sadece kart etiketi TAM "TEKLİF" veya "POLİÇE" ise teklif/poliçe say (ÜRÜN KARTI, BİLGİLENDİRME vb. türsüz kalır)
+            const lbN = lb.trim().toLocaleUpperCase('tr');
+            const tur = lastThumbLabel
+                ? (lbN === 'TEKLİF' ? 'TEKLİF' : (lbN === 'POLİÇE' ? 'POLİÇE' : ''))
+                : (/tekl/i.test(title) ? 'TEKLİF' : (/pol/i.test(title) ? 'POLİÇE' : ''));
             V.mode = tur === 'TEKLİF' ? 'teklif' : (tur === 'POLİÇE' ? 'police' : '');
             vSet('doc', title, mkUrl(), (tur && adlandir(tur)) || fname);
             lastThumbLabel = '';
@@ -589,7 +593,7 @@
                     Array.from(document.querySelectorAll('#carouselImages li')).find(x => {
                         if (x.classList.contains('astra-makbuz-card')) return false;
                         const lb = x.querySelector('a label'); const n = ((lb && lb.textContent) || '').trim().toLocaleUpperCase('tr');
-                        return n === tur || n.indexOf(tur) === 0;
+                        return n === tur;
                     });
                 const li = await waitFor(bulKart, 6000);
                 if (V.ov !== cur) return;
@@ -659,7 +663,9 @@
     const origAClick = HTMLAnchorElement.prototype.click;
     function renameDl(name) {
         const n = String(name || '');
-        const kind = /^\s*pol/i.test(n) ? 'POLİÇE' : (/^\s*tekl/i.test(n) ? 'TEKLİF' : '');
+        // Sadece adı TAM "POLİÇE" / "TEKLİF" olanlar yeniden adlandırılır (ÜRÜN KARTI, BİLGİLENDİRME vb. kendi adıyla iner)
+        const nn = n.replace(/\.pdf$/i, '').trim().toLocaleUpperCase('tr');
+        const kind = nn === 'POLİÇE' ? 'POLİÇE' : (nn === 'TEKLİF' ? 'TEKLİF' : '');
         return kind ? adlandir(kind) : '';
     }
     function tryIntercept(a) {
