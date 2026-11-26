@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Astr
 // @namespace    astra-sade-tema
-// @version      3.8
+// @version      3.9
 // @description  Anadolu Sigorta Astra arayüzünü sadeleştirir, modern ve profesyonel bir görünüm verir
 // @match        https://astra.anadolusigorta.com.tr/*
 // @run-at       document-start
@@ -16,8 +16,20 @@
     // =====================================================================
     const TIMER_CARPAN = 1;   // 1 = kapalı (güvenli). Site içi beklemeleri kısaltmak için 0.5 veya 0.3 dene; sorun çıkarsa 1 yap
     const HOP_AKTIF = true;   // false yaparsan otomatik makbuz geçişi tamamen kapanır
-    // İndirilen dosya adındaki ürün kısa adı: kod -> ad. Listede yoksa ürün adının tamamı (sondaki SİGORTASI hariç) kullanılır.
+    // İndirilen dosya adındaki ürün kısa adı: kod -> ad. Listede yoksa aşağıdaki kurallara bakılır.
     const URUN_KISA_AD = { '439': 'TIBBİ' };
+    // Ürün adında bu kelimeler geçerse kısa ad kullanılır (yukarıdan aşağıya ilk eşleşen kazanır)
+    const URUN_KISA_KURAL = [
+        [/HEK[İI]M/, 'HEKİM SOR'],
+        [/MESLEK/, 'MESLEKİ SOR'],
+        [/TIBB[İI]/, 'TIBBİ']
+    ];
+    function kisaUrun(tam) {
+        if (!tam || tam === '-') return '';
+        const U = tam.toLocaleUpperCase('tr');
+        for (const [re, ad] of URUN_KISA_KURAL) if (re.test(U)) return ad;
+        return U.replace(/\s+S[İI]GORTA(SI)?\s*$/, '').replace(/SORUMLULU[KĞ]U?/g, 'SOR').trim();
+    }
     const PDF_ARAC_CUBUGU_GIZLE = true;   // true: pencerede tarayıcının kendi PDF araç çubuğu (kodlu adla indiren indirme düğmesi) gizlenir, sadece bizim İNDİR kullanılır
     const FX_KAPAT = true;    // false yaparsan jQuery animasyonları site gibi kalır
     (function turbo() {
@@ -59,13 +71,12 @@
     const wantView = () => Date.now() < wantUntil;
     const consumeView = () => { wantUntil = 0; };
 
-    // ---- Dosya adı: MÜŞTERİ ÜRÜN POLİÇE/TEKLİF/MAKBUZ ----
+    // ---- Dosya adı: MÜŞTERİ ÜRÜN POL/MAKBUZ YIL  |  TEKLİF NO ÜRÜN TEKLİF YIL ----
     const infoByPol = {};   // sorgu bitince etiketler boşalsa da ad/ürün kalsın
     const okTxt = t => !!t && t !== '-';
-    const AYLAR = ['OCAK', 'ŞUBAT', 'MART', 'NİSAN', 'MAYIS', 'HAZİRAN', 'TEMMUZ', 'AĞUSTOS', 'EYLÜL', 'EKİM', 'KASIM', 'ARALIK'];
-    function readDonem() {   // lbl_BaslamaTarih (24/11/2026) -> "KASIM 2026"
+    function readDonem() {   // lbl_BaslamaTarih (24/11/2026) -> "2026"
         const m = txtOf(document.getElementById('lbl_BaslamaTarih')).match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/);
-        return (m && +m[2] >= 1 && +m[2] <= 12) ? AYLAR[+m[2] - 1] + ' ' + m[3] : '';
+        return (m && +m[2] >= 1 && +m[2] <= 12) ? m[3] : '';
     }
     function readInfo() {
         let ad = txtOf(document.getElementById('lbl_SIGORTA_ETTIREN'));
@@ -75,8 +86,8 @@
         const m = ur.match(/^\s*(\d+)\s*-\s*(.*)$/);
         const kod = m ? m[1] : '';
         const tam = (m ? m[2] : ur).trim();
-        // listede kısa adı varsa onu, yoksa ürün adının tamamını (sondaki "SİGORTASI" hariç) kullan
-        const urun = URUN_KISA_AD[kod] || (okTxt(tam) ? tam.replace(/\s+S[İIi]GORTA(SI)?\s*$/i, '').trim() : '');
+        // önce koda göre kısa ad, yoksa ürün adındaki kelimelere göre kısa ad
+        const urun = URUN_KISA_AD[kod] || kisaUrun(tam);
         const durum = txtOf(document.getElementById('lbl_DURUM')).toLocaleLowerCase('tr');
         const tur = (labelPol() && !/teklif/.test(durum)) ? 'POLİÇE' : 'TEKLİF';
         return { ad: okTxt(ad) ? ad : '', urun, tur, donem: readDonem() };
@@ -94,10 +105,19 @@
     function adlandir(tur, idx, toplam) {
         const i = getInfo();
         if (!i || !i.ad) return '';
-        // site müşteri adını maskelemişse (Y***N D***L) gerçek ad yoktur: poliçe/teklif numarasını kullan
-        const kisi = /\*/.test(i.ad) ? (polNo() || curTek || '') : i.ad;
+        let kisi;
+        if (tur === 'TEKLİF') {
+            // teklifte müşteri adı yerine teklif no
+            const tn = [curTek, txtOf(document.getElementById('lbl_TeklifNo'))].find(okTxt) || '';
+            kisi = tn || (/\*/.test(i.ad) ? (polNo() || '') : i.ad);
+        } else {
+            // site müşteri adını maskelemişse (Y***N D***L) poliçe/teklif numarasını kullan
+            kisi = /\*/.test(i.ad) ? (polNo() || curTek || '') : i.ad;
+        }
         if (!kisi) return '';
-        const parca = [kisi, i.urun, i.donem, tur + (toplam > 1 ? ' ' + (idx + 1) : '')].filter(Boolean).join(' ');
+        const etiket = tur === 'POLİÇE' ? 'POL' : tur;
+        const yil = i.donem || String(new Date().getFullYear());
+        const parca = [kisi, i.urun, etiket + (toplam > 1 ? ' ' + (idx + 1) : ''), yil].filter(Boolean).join(' ');
         return parca.toLocaleUpperCase('tr').replace(/[\\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() + '.pdf';
     }
 
@@ -225,7 +245,7 @@
     const helperSurum = () => parseFloat(document.documentElement.getAttribute('data-astra-helper') || '0');
     const gunStr = () => { const d = new Date(), z = n => String(n).padStart(2, '0'); return z(d.getDate()) + '.' + z(d.getMonth() + 1) + '.' + d.getFullYear(); };
     const gunAd = tur => gunStr() + ' ' + tur;                       // örn. 24.11.2026 Poliçeler
-    const turAd = ad => /TEKLİF\.pdf$/i.test(ad || '') ? 'Teklifler' : 'Poliçeler';   // makbuz da poliçelerle gider
+    const turAd = ad => /TEKLİF( \d+)? \d{4}\.pdf$/i.test(ad || '') ? 'Teklifler' : 'Poliçeler';   // makbuz da poliçelerle gider
     const idbOpen = () => new Promise((res, rej) => { const r = indexedDB.open('astra-tema', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
     async function idbGet(k) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
     async function idbSet(k, v) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction('kv', 'readwrite').objectStore('kv').put(v, k); q.onsuccess = () => res(); q.onerror = () => rej(q.error); }); }
@@ -2002,7 +2022,7 @@
 
     // ---- SBM OTO: kutunun en altında yanıp sönen düğme + Değer alanlarını otomatik doldur ----
     const SBM_KOD = '9d21cf41f7ee94e5380a2e678dba9050';   // #selectPQValueCode_2129 alanına yazılır
-    const SBM_DEGER = '9999';                              // #inputPQValue_1671 alanı boşsa kendisi gelir
+    const SBM_DEGER = '99999';                             // #inputPQValue_1671 alanı boşsa kendisi gelir
     function yazDeger(el, v) {
         try {
             const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -2062,7 +2082,7 @@
     document.addEventListener('click', () => setTimeout(schedule, 300), true);
 
     function init() {
-        toast('Astra Tema v2.8 yüklendi', 3500);
+        toast('Astra Tema v3.9 yüklendi', 3500);
         loadDir();
         try {
             const g = sessionStorage.getItem('astraGo');
