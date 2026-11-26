@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Astr
 // @namespace    astra-sade-tema
-// @version      3.9
+// @version      4.0
 // @description  Anadolu Sigorta Astra arayüzünü sadeleştirir, modern ve profesyonel bir görünüm verir
 // @match        https://astra.anadolusigorta.com.tr/*
 // @run-at       document-start
@@ -2020,7 +2020,7 @@
         document.body.appendChild(w);
     }
 
-    // ---- SBM OTO: kutunun en altında yanıp sönen düğme + Değer alanlarını otomatik doldur ----
+    // ---- SBM OTO: Değer Kodu alanı ekrana gelince, o alanın altında yanıp sönen düğme + Değer alanlarını otomatik doldur ----
     const SBM_KOD = '9d21cf41f7ee94e5380a2e678dba9050';   // #selectPQValueCode_2129 alanına yazılır
     const SBM_DEGER = '99999';                             // #inputPQValue_1671 alanı boşsa kendisi gelir
     function yazDeger(el, v) {
@@ -2049,15 +2049,15 @@
     }
     function sbmOto() {
         sbmDegerler();
-        const area = document.getElementById('production-box-area-content');
-        const body = area && area.parentElement;
+        const inp = document.getElementById('selectPQValueCode_2129');
         let b = document.getElementById('astra-sbm-oto');
-        if (!body) { if (b) b.remove(); return; }
+        // Değer Kodu alanı ekranda yoksa buton da yok
+        if (!inp || !visible(inp)) { if (b) b.remove(); return; }
         if (!document.getElementById('astra-sbm-css')) {
             const st = document.createElement('style'); st.id = 'astra-sbm-css';
             st.textContent =
                 '@keyframes astraSbm{0%,100%{background:#dc2626;box-shadow:0 0 0 0 rgba(220,38,38,.55);}50%{background:#f97316;box-shadow:0 0 0 10px rgba(249,115,22,0);}}' +
-                '#astra-sbm-oto{display:block;width:100%;margin:12px 0 4px;padding:13px 16px;border:0;border-radius:12px;color:#fff;font:800 15px Segoe UI,system-ui,Arial,sans-serif;letter-spacing:.6px;cursor:pointer;animation:astraSbm 1s ease-in-out infinite;}' +
+                '#astra-sbm-oto{display:block;width:100%;margin:40px 0 4px;padding:13px 16px;border:0;border-radius:12px;color:#fff;font:800 15px Segoe UI,system-ui,Arial,sans-serif;letter-spacing:.6px;cursor:pointer;animation:astraSbm 1s ease-in-out infinite;}' +
                 '#astra-sbm-oto[data-done="1"]{animation:none;background:#16a34a;}' +
                 '#astra-sbm-oto:hover{filter:brightness(1.1);}';
             document.head.appendChild(st);
@@ -2067,8 +2067,32 @@
             b.id = 'astra-sbm-oto'; b.type = 'button'; b.textContent = '⚡ SBM OTO';
             b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); sbmOtoBas(b); });
         }
-        if (body.lastElementChild !== b) body.appendChild(b);   // her zaman kutunun en altında
+        // Butonu, Değer Kodu alanının bulunduğu satırın/kutunun en altına koy
+        const kap = inp.closest('.box-body') || inp.closest('.row') || inp.parentElement;
+        if (kap && kap.lastElementChild !== b) kap.appendChild(b);
     }
+
+    // ---- select2 arama kutusu donmasın (hastane / adres arama): harf harf değil, yazmayı bırakınca bir kez ara ----
+    const ARAMA_GECIKME = 350;   // ms. Hâlâ takılırsa 500 yap, daha hızlı sonuç istersen 250
+    (function select2Hizli() {
+        const sayac = new WeakMap();
+        const gec = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'Tab', 'Shift', 'Control', 'Alt', 'Home', 'End', 'PageUp', 'PageDown']);
+        function tut(e) {
+            const el = e.target;
+            if (!el || !el.classList || !el.classList.contains('select2-search__field')) return;
+            if (e.__astraGec) return;                                  // bizim gönderdiğimiz olay: select2'ye geçsin
+            if (e.type === 'keyup' && gec.has(e.key)) return;         // yön tuşları/Enter hemen çalışsın
+            e.stopImmediatePropagation();                              // her harfte filtrelemeyi engelle
+            clearTimeout(sayac.get(el));
+            sayac.set(el, setTimeout(() => {
+                const ev = new Event('input', { bubbles: true });
+                ev.__astraGec = true;
+                el.dispatchEvent(ev);                                  // yazmayı bırakınca tek sefer ara
+            }, ARAMA_GECIKME));
+        }
+        document.addEventListener('keyup', tut, true);
+        document.addEventListener('input', tut, true);
+    })();
 
     function run() { snapInfo(); fab(); kisayol(); sbmOto(); wrapGetView(); badgeify(); sortDocs(); wrapPdfMake(); addMakbuz(); autoHop(); launcher(); }
 
@@ -2082,7 +2106,7 @@
     document.addEventListener('click', () => setTimeout(schedule, 300), true);
 
     function init() {
-        toast('Astra Tema v3.9 yüklendi', 3500);
+        toast('Astra Tema v4.0 yüklendi', 3500);
         loadDir();
         try {
             const g = sessionStorage.getItem('astraGo');
@@ -2092,7 +2116,14 @@
             }
         } catch (e) { /* sessizce geç */ }
         run();
-        new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+        new MutationObserver(muts => {
+            // select2 açılır listesindeki değişiklikler için sayfayı yeniden tarama (donmanın ikinci nedeni)
+            const sadece = muts.every(m => {
+                const n = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+                return n && n.closest && n.closest('.select2-container, .select2-dropdown, .select2-results');
+            });
+            if (!sadece) schedule();
+        }).observe(document.body, { childList: true, subtree: true });
     }
 
     if (document.body) init();
