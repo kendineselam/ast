@@ -2054,8 +2054,8 @@
         // Çıpa: "MÜKERRER POLİÇE/TEKLİF BİLGİLERİ" düğmesi (varsa SBM OTO onun biraz altında durur)
         const muk = document.getElementById('btn_soru_grup_66866') || document.querySelector('button[onclick*="Get_Header_Soru_Detay_02(\'275\'"]');
         const mukVar = !!(muk && visible(muk));
-        // Ne mükerrer düğmesi ne de Değer Kodu alanı ekranda yoksa buton da yok
-        if (!mukVar && (!inp || !visible(inp))) { if (b) b.remove(); return; }
+        // Değer Kodu alanı ekranda yoksa buton da yok (mükerrer düğmesi tek başına yetmez)
+        if (!inp || !visible(inp)) { if (b) b.remove(); return; }
         if (!document.getElementById('astra-sbm-css')) {
             const st = document.createElement('style'); st.id = 'astra-sbm-css';
             st.textContent =
