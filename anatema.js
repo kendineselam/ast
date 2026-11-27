@@ -2051,8 +2051,11 @@
         sbmDegerler();
         const inp = document.getElementById('selectPQValueCode_2129');
         let b = document.getElementById('astra-sbm-oto');
-        // Değer Kodu alanı ekranda yoksa buton da yok
-        if (!inp || !visible(inp)) { if (b) b.remove(); return; }
+        // Çıpa: "MÜKERRER POLİÇE/TEKLİF BİLGİLERİ" düğmesi (varsa SBM OTO onun biraz altında durur)
+        const muk = document.getElementById('btn_soru_grup_66866') || document.querySelector('button[onclick*="Get_Header_Soru_Detay_02(\'275\'"]');
+        const mukVar = !!(muk && visible(muk));
+        // Ne mükerrer düğmesi ne de Değer Kodu alanı ekranda yoksa buton da yok
+        if (!mukVar && (!inp || !visible(inp))) { if (b) b.remove(); return; }
         if (!document.getElementById('astra-sbm-css')) {
             const st = document.createElement('style'); st.id = 'astra-sbm-css';
             st.textContent =
@@ -2067,9 +2070,16 @@
             b.id = 'astra-sbm-oto'; b.type = 'button'; b.textContent = '⚡ SBM OTO';
             b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); sbmOtoBas(b); });
         }
-        // Butonu, Değer Kodu alanının bulunduğu satırın/kutunun en altına koy
-        const kap = inp.closest('.box-body') || inp.closest('.row') || inp.parentElement;
-        if (kap && kap.lastElementChild !== b) kap.appendChild(b);
+        if (mukVar) {
+            // Mükerrer düğmesinin hemen altına, yapışık olmasın diye biraz boşluk bırakarak koy
+            b.style.margin = '14px 0 4px';
+            if (b.previousElementSibling !== muk) muk.insertAdjacentElement('afterend', b);
+        } else {
+            // Mükerrer düğmesi yoksa eski davranış: Değer Kodu alanının kutusunun en altına
+            b.style.margin = '';
+            const kap = inp.closest('.box-body') || inp.closest('.row') || inp.parentElement;
+            if (kap && kap.lastElementChild !== b) kap.appendChild(b);
+        }
     }
 
     // ---- select2 arama kutusu donmasın (hastane / adres arama): harf harf değil, yazmayı bırakınca bir kez ara ----
