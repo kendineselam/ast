@@ -2054,8 +2054,16 @@
         // Çıpa: "MÜKERRER POLİÇE/TEKLİF BİLGİLERİ" düğmesi (varsa SBM OTO onun biraz altında durur)
         const muk = document.getElementById('btn_soru_grup_66866') || document.querySelector('button[onclick*="Get_Header_Soru_Detay_02(\'275\'"]');
         const mukVar = !!(muk && visible(muk));
-        // Değer Kodu alanı ekranda yoksa buton da yok (mükerrer düğmesi tek başına yetmez)
-        if (!inp || !visible(inp)) { if (b) b.remove(); return; }
+        // Buton SADECE "SBM OTORİZASYON KODU" satırı (Değer Kodu kutusu) gerçekten ekrandayken var olur
+        let satirVar = false;
+        if (inp && visible(inp)) {
+            const tr = inp.closest('tr.question-row') || inp.closest('tr');
+            const r = inp.getBoundingClientRect();
+            const cs = getComputedStyle(inp);
+            const adOk = !tr || /SBM\s*OTOR/i.test(tr.textContent || '');
+            satirVar = r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && adOk;
+        }
+        if (!satirVar) { if (b) b.remove(); return; }
         if (!document.getElementById('astra-sbm-css')) {
             const st = document.createElement('style'); st.id = 'astra-sbm-css';
             st.textContent =
